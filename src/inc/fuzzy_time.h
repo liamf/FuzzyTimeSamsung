@@ -3,6 +3,6 @@
 
 #include "string.h"
 
-void fuzzy_time(int hours, int minutes, char *line1, char *line2, char *line3);
+void fuzzy_time(int hours, int minutes, char *line1, char *line2, char *line3, int *pm, int *hint);
 
 #endif

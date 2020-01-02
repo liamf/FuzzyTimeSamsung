@@ -16,6 +16,9 @@ static const char* const HOURS[] = {
     "twelve",
 };
 
+#define FALSE	0
+#define TRUE    1
+
 // TIme is (roughly ...) like this
 // Time      line1     line2     line3
 // ----      --------  --------  --------
@@ -34,7 +37,7 @@ static const char* const HOURS[] = {
 // 5:49      nearly    ten to    six
 // 5:50                ten to    six
 
-void fuzzy_time(int hours, int minutes, char* line1, char* line2, char* line3) {
+void fuzzy_time(int hours, int minutes, char* line1, char* line2, char* line3, int *pm, int *hint) {
 
     if (minutes % 5 >= 1 && minutes % 5 < 3) {
         strcpy(line1, "gone");
@@ -53,19 +56,27 @@ void fuzzy_time(int hours, int minutes, char* line1, char* line2, char* line3) {
         hours += 1;
     }
 
+    *pm = FALSE;
     if (hours > 12)
+    {
         hours -= 12;
+        *pm = TRUE;
+    }
+
+    *hint = 3;	// It's almost always the last line
 
     switch (minutes) {
     case 0:
         strcpy(line1, "it's");
         strcpy(line2, HOURS[hours]);
         strcpy(line3, "o'clock");
+        *hint = 2;
         break;
     case 1:
     case 2:
         strcpy(line2, HOURS[hours]);
         strcpy(line3, "o'clock");
+        *hint = 2;
         break;
     case 3:
     case 4:

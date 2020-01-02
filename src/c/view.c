@@ -38,30 +38,30 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 	elm_win_resize_object_add(face->conform, face->naviframe);
 	evas_object_show(face->naviframe);
 
-	/* Add our three columns to the display ( 3 vertical boxes) */
-    face->leftColumn  = elm_box_add(face->naviframe);
-    evas_object_move(face->leftColumn, width*0.25, height * 0.20);
-    evas_object_show(face->leftColumn);
-
-	face->midColumn   = elm_box_add(face->naviframe);
-    evas_object_show(face->midColumn);
-
-	face->rightColumn = elm_box_add(face->naviframe);
-	evas_object_show(face->rightColumn);
-
 	// Add our time row labels
-	face->topTimeRow = elm_label_add(face->leftColumn);
-	view_add_timelabel(face->leftColumn, face->topTimeRow);
+	face->topTimeRow = elm_label_add(face->naviframe);
+	evas_object_move(face->topTimeRow, face->width*0.1, face->height*0.2);
+	evas_object_resize(face->topTimeRow, face->width*0.5, face->height*0.2);
+	evas_object_show(face->topTimeRow);
 
-	face->midTimeRow = elm_label_add(face->leftColumn);
-	view_add_timelabel(face->leftColumn, face->midTimeRow);
+	face->midTimeRow = elm_label_add(face->naviframe);
+	evas_object_move(face->midTimeRow, face->width*0.1, face->height*0.4);
+	evas_object_resize(face->midTimeRow, face->width*0.5, face->height*0.2);
+	evas_object_show(face->midTimeRow);
 
-	face->bottomTimeRow = elm_label_add(face->leftColumn);
-	view_add_timelabel(face->leftColumn, face->bottomTimeRow);
+	face->bottomTimeRow = elm_label_add(face->naviframe);
+	evas_object_move(face->bottomTimeRow, face->width*0.1, face->height*0.6);
+	evas_object_resize(face->bottomTimeRow, face->width*0.5, face->height*0.2);
+	evas_object_show(face->bottomTimeRow);
+
+	face->ampm = elm_label_add(face->naviframe);
+	evas_object_move(face->ampm, face->width*0.1, face->height*0.8);
+	evas_object_resize(face->ampm, face->width*0.5, face->height*0.2);
+	evas_object_show(face->ampm);
 
 	// Add our Second progress bar
-	face->secondBarTop = evas_object_rectangle_add(face->midColumn);
-	face->secondBarBottom = evas_object_rectangle_add(face->midColumn);
+	face->secondBarTop = evas_object_rectangle_add(face->naviframe);
+	face->secondBarBottom = evas_object_rectangle_add(face->naviframe);
 	evas_object_color_set(face->secondBarTop, 0, 0, 0, 0);
 	evas_object_color_set(face->secondBarBottom, 0, 0, 0, 0);
 	evas_object_resize(face->secondBarTop, 0, 0);
@@ -89,6 +89,8 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	char midLine[24];
 	char bottomLine[24];
 	char formattedLine[TEXTBUFSIZE];
+	int hint;
+	int pm;
 
 	if (watch_time == NULL)
 		return;
@@ -97,37 +99,57 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	watch_time_get_minute(watch_time, &minute);
 	watch_time_get_second(watch_time, &second);
 
-	fuzzy_time(hour24, minute, topLine, midLine, bottomLine);
+	fuzzy_time(hour24, minute, topLine, midLine, bottomLine, &pm, &hint);
 
-	formatLine(formattedLine, topLine);
+	formatLine(formattedLine, topLine, false);
 	elm_object_text_set(face->topTimeRow, formattedLine);
 
-	formatLine(formattedLine, midLine);
+	formatLine(formattedLine, midLine, (hint == 2));
 	elm_object_text_set(face->midTimeRow, formattedLine);
 
-	formatLine(formattedLine, bottomLine);
+	formatLine(formattedLine, bottomLine, (hint == 3));
 	elm_object_text_set(face->bottomTimeRow, formattedLine);
+
+	if( pm )
+	{
+		snprintf(formattedLine, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=semibold font_size=24 align=right>pm</font></color>");
+	}
+	else
+	{
+		snprintf(formattedLine, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=semibold font_size=24 align=right>am</font></color>");
+	}
+	elm_object_text_set(face->ampm, formattedLine);
 
 	view_set_second(face, second);
 }
 
+/* Animated seconds bar */
 static void view_set_second(watchfacedata_s *face, int second)
 {
+	int barHeight;
+	int topPart;
+
+	barHeight = face->height * 0.8;
+	topPart = (barHeight * second) / 60;
+
 	evas_object_move(face->secondBarTop, face->width*0.65, face->height*0.1);
-	evas_object_resize(face->secondBarTop,5,face->height*0.8);
-	evas_object_color_set(face->secondBarTop, 25,1,255,190);
-}
+	evas_object_resize(face->secondBarTop,3,topPart);
+	evas_object_color_set(face->secondBarTop, 100,0,255,180);
 
-static void view_add_timelabel(Evas_Object *box, Evas_Object *label)
-{
-	evas_object_size_hint_weight_set(label, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-	evas_object_size_hint_align_set(label, EVAS_HINT_FILL, 1.0);
-	evas_object_show(label);
-	elm_box_pack_end(box, label);
+	evas_object_move(face->secondBarBottom, face->width*0.65, face->height*0.1 + topPart);
+	evas_object_resize(face->secondBarBottom, 3, barHeight - topPart);
+	evas_object_color_set(face->secondBarBottom, 0,0,255,180);
 }
 
 
-static void formatLine( char *formatted, char *raw)
+static void formatLine( char *formatted, char *raw, bool hint)
 {
-	snprintf(formatted, TEXTBUFSIZE, "<font=TizenSans font_weight=semibold font_size=55 align=right>%s</font>",raw);
+	if( hint)
+	{
+		snprintf(formatted, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=semibold font_size=56 align=right>%s</font></color>",raw);
+	}
+	else
+	{
+		snprintf(formatted, TEXTBUFSIZE, "<font=TizenSans font_weight=thin font_size=56 align=right>%s</font>",raw);
+	}
 }
