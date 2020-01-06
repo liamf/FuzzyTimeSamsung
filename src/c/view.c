@@ -1,12 +1,25 @@
 /*
  * Create base GUI and provide manipulation routines
  */
+#include <stdlib.h>
 #include <tizen.h>
+#include <privacy_privilege_manager.h>
+#include <sensor.h>
+#include <device/battery.h>
+
 #include "fuzzytimesamsung.h"
 #include "view.h"
 #include "fuzzy_time.h"
 
 #define TEXTBUFSIZE	256
+
+sensor_listener_h hrmSensorListener;	// Not sure if we need to keep these around
+sensor_listener_h stepsSensorListener;
+
+void hrm_sensor_callback(sensor_h, sensor_event_s *, void *);
+void steps_sensor_callback(sensor_h, sensor_event_s *, void *);
+void get_sensor_permissions();
+void sensor_permission_response_callback(ppm_call_cause_e, ppm_request_result_e, const char *, void *);
 
 void create_watch_face(watchfacedata_s *face, int width, int height)
 {
@@ -24,7 +37,9 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 
 	face->width = width;
 	face->height = height;
-
+	face->beatsPerMinute = 0;
+	face->steps = 0;
+	face->privileged = 0;
 
 	/* Conformant */
 	face->conform = elm_conformant_add(face->win);
@@ -40,17 +55,17 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 
 	// Add our time row labels
 	face->topTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->topTimeRow, face->width*0.1, face->height*0.2);
+	evas_object_move(face->topTimeRow, face->width*0.1, face->height*0.18);
 	evas_object_resize(face->topTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->topTimeRow);
 
 	face->midTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->midTimeRow, face->width*0.1, face->height*0.4);
+	evas_object_move(face->midTimeRow, face->width*0.1, face->height*0.38);
 	evas_object_resize(face->midTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->midTimeRow);
 
 	face->bottomTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->bottomTimeRow, face->width*0.1, face->height*0.6);
+	evas_object_move(face->bottomTimeRow, face->width*0.1, face->height*0.58);
 	evas_object_resize(face->bottomTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->bottomTimeRow);
 
@@ -59,21 +74,23 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 	evas_object_resize(face->ampm, face->width*0.5, face->height*0.2);
 	evas_object_show(face->ampm);
 
-	// Add our Second progress bar
+	// Add our Second progress bar : they'll be sized correctly by the watch update
 	face->secondBarTop = evas_object_rectangle_add(face->naviframe);
 	face->secondBarBottom = evas_object_rectangle_add(face->naviframe);
-	evas_object_color_set(face->secondBarTop, 0, 0, 0, 0);
-	evas_object_color_set(face->secondBarBottom, 0, 0, 0, 0);
-	evas_object_resize(face->secondBarTop, 0, 0);
-	evas_object_resize(face->secondBarBottom, 0, 0);
 	evas_object_show(face->secondBarTop);
 	evas_object_show(face->secondBarBottom);
+
+	// Add the various display widgets
+	add_display_widgets(face);
 
 	ret = watch_time_get_current_time(&watch_time);
 	if (ret != APP_ERROR_NONE)
 		dlog_print(DLOG_ERROR, LOG_TAG, "failed to get current time. err = %d", ret);
 
 	update_watch_face(face, watch_time, 0);
+
+	update_display_widgets(face, watch_time);
+
 	watch_time_delete(watch_time);
 
 	/* Show window after base gui is set up */
@@ -120,11 +137,109 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	}
 	elm_object_text_set(face->ampm, formattedLine);
 
+	// Set the "second hand" progress bar
 	view_set_second(face, second);
+
+	// Update the widgets once per minute
+	// ... which is too often anyway ... not going to change that fast ...
+	if( second == 0 )
+	{
+		update_display_widgets(face, watch_time);
+	}
+
+}
+
+// Create the label widgets for updated information from sensors
+void add_display_widgets(watchfacedata_s *face)
+{
+	face->heartrate = elm_label_add(face->naviframe);
+	evas_object_move(face->heartrate, face->width*0.7, face->height*0.30);
+	evas_object_resize(face->heartrate, face->width*0.2, face->height*0.2);
+	evas_object_show(face->heartrate);
+
+	face->battery = elm_label_add(face->naviframe);
+	evas_object_move(face->battery, face->width*0.7, face->height*0.40);
+	evas_object_resize(face->battery, face->width*0.2, face->height*0.2);
+	evas_object_show(face->battery);
+
+	face->steps = elm_label_add(face->naviframe);
+	evas_object_move(face->steps, face->width*0.7, face->height*0.50);
+	evas_object_resize(face->steps, face->width*0.2, face->height*0.2);
+	evas_object_show(face->steps);
+
+	face->date = elm_label_add(face->naviframe);
+	evas_object_move(face->date, face->width*0.7, face->height*0.60);
+	evas_object_resize(face->date, face->width*0.2, face->height*0.2);
+	evas_object_show(face->date);
+
+}
+
+// Create the sensor callbacks
+void create_sensor_callbacks(watchfacedata_s *face)
+{
+	sensor_h sensor;
+	int ret;
+
+	// Seems that we have to request privileges from the user before setting this up
+	// Otherwise ... app will not work correctly
+	get_sensor_permissions();
+
+	sensor_get_default_sensor(SENSOR_HRM, &sensor);
+	ret = sensor_create_listener(sensor, &hrmSensorListener);
+	if( ret != SENSOR_ERROR_NONE)
+		dlog_print(DLOG_ERROR, LOG_TAG, "failed to get hrm sensor. err = %d", ret);
+
+	ret = sensor_listener_set_event_cb(hrmSensorListener, 20000, hrm_sensor_callback, face);
+	if( ret != SENSOR_ERROR_NONE)
+		dlog_print(DLOG_ERROR, LOG_TAG, "failed to set hrm sensor listener. err = %d", ret);
+
+	sensor_listener_set_option(hrmSensorListener, SENSOR_OPTION_DEFAULT);
+	sensor_listener_start(hrmSensorListener);
+
+	sensor_get_default_sensor(SENSOR_HUMAN_PEDOMETER, &sensor);
+	ret = sensor_create_listener(sensor, &stepsSensorListener);
+	if( ret != SENSOR_ERROR_NONE)
+		dlog_print(DLOG_ERROR, LOG_TAG, "failed to get steps sensor. err = %d", ret);
+
+	ret = sensor_listener_set_event_cb(stepsSensorListener, 20000, steps_sensor_callback, face);
+	if( ret != SENSOR_ERROR_NONE)
+		dlog_print(DLOG_ERROR, LOG_TAG, "failed to set ste[s sensor listener. err = %d", ret);
+
+	sensor_listener_set_option(stepsSensorListener, SENSOR_OPTION_DEFAULT);
+	sensor_listener_start(stepsSensorListener);
+}
+
+// Update them
+void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
+{
+	char formattedLine[TEXTBUFSIZE];
+	int day;
+	int month;
+	int batteryCharge;
+
+	if( face->privileged == 0)
+	{
+		create_sensor_callbacks(face);
+	}
+
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d bpm</font>",face->beatsPerMinute);
+	elm_object_text_set(face->heartrate, formattedLine);
+
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d steps</font>",face->stepsTaken);
+	elm_object_text_set(face->steps, formattedLine);
+
+	device_battery_get_percent(&batteryCharge);
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d %%</font>",batteryCharge);
+	elm_object_text_set(face->battery, formattedLine);
+
+	watch_time_get_day(watchtime, &day);
+	watch_time_get_month(watchtime, &month);
+	snprintf(formattedLine, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=bold font_size=24 align=left>%d %s</font></color>",day, MONTHS[month-1]);
+	elm_object_text_set(face->date, formattedLine);
 }
 
 /* Animated seconds bar */
-static void view_set_second(watchfacedata_s *face, int second)
+void view_set_second(watchfacedata_s *face, int second)
 {
 	int barHeight;
 	int topPart;
@@ -141,8 +256,100 @@ static void view_set_second(watchfacedata_s *face, int second)
 	evas_object_color_set(face->secondBarBottom, 0,0,255,180);
 }
 
+// Sensor handler callback : stash the value for later
+// Note we get a callback only when the value changes ... not sure how to just read the current value
+void hrm_sensor_callback(sensor_h sensor, sensor_event_s *event, void *user_data)
+{
+	sensor_type_e sensorType;
+	sensor_get_type(sensor, &sensorType);
 
-static void formatLine( char *formatted, char *raw, bool hint)
+	watchfacedata_s *face = (watchfacedata_s *)user_data;
+
+	if( sensorType == SENSOR_HRM)
+	{
+		if( (int)event->values[0] > 0)
+		{
+			face->beatsPerMinute = (int)event->values[0];
+		}
+	}
+}
+
+// Sensor handler callback : stash the value for later
+void steps_sensor_callback(sensor_h sensor, sensor_event_s *event, void *user_data)
+{
+	sensor_type_e sensorType;
+	sensor_get_type(sensor, &sensorType);
+
+	watchfacedata_s *face = (watchfacedata_s *)user_data;
+
+	if (sensorType == SENSOR_HUMAN_PEDOMETER)
+	{
+		if( (int)event->values[0] > 0)
+		{
+			face->stepsTaken = (int)event->values[0];
+		}
+	}
+
+}
+
+// This seems to be required ... even if the sensor priv is set manually in the app ...
+void get_sensor_permissions()
+{
+    int ret;
+	ppm_check_result_e result;
+
+    ret = ppm_check_permission("http://tizen.org/privilege/healthinfo", &result);
+    if( ret == PRIVACY_PRIVILEGE_MANAGER_ERROR_NONE)
+    {
+		switch( result)
+		{
+			case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_ALLOW:
+				dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv http://tizen.org/privilege/healthinfo");
+				break;
+
+			case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_DENY:
+				dlog_print(DLOG_ERROR, LOG_TAG, "denied sensor priv http://tizen.org/privilege/healthinfo");
+				break;
+
+			case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_ASK:
+				dlog_print(DLOG_ERROR, LOG_TAG, "asking for sensor priv http://tizen.org/privilege/healthinfo");
+				ret = ppm_request_permission("http://tizen.org/privilege/healthinfo", sensor_permission_response_callback, NULL);
+				break;
+		}
+
+
+    }
+}
+
+// sensor permission callback
+void sensor_permission_response_callback(ppm_call_cause_e cause, ppm_request_result_e result, const char *priv , void *data)
+{
+    if (cause == PRIVACY_PRIVILEGE_MANAGER_CALL_CAUSE_ERROR) {
+        /* Log and handle errors */
+    	dlog_print(DLOG_ERROR, LOG_TAG, "callback for a manager error for privs");
+        return;
+    }
+
+	switch (result) {
+		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_ALLOW_FOREVER:
+			/* Update UI and start accessing protected functionality */
+			dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv forever %s", priv);
+			break;
+
+		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_DENY_FOREVER:
+			/* Show a message and terminate the application */
+			dlog_print(DLOG_ERROR, LOG_TAG, "denied sensor priv forever %s", priv);
+			break;
+
+		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_DENY_ONCE:
+			/* Show a message with explanation */
+			dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv once %s", priv);
+			break;
+	}
+}
+
+// Format a main time line
+void formatLine( char *formatted, char *raw, bool hint)
 {
 	if( hint)
 	{
