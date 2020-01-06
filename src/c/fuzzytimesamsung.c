@@ -33,6 +33,8 @@ static void
 app_resume(void *data)
 {
 	/* Take necessary actions when application becomes visible. */
+	watchfacedata_s *ad = data;
+	update_display_widgets(ad, NULL);
 }
 
 static void
