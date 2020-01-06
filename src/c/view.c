@@ -7,6 +7,7 @@
 #include <sensor.h>
 #include <device/battery.h>
 
+
 #include "fuzzytimesamsung.h"
 #include "view.h"
 #include "fuzzy_time.h"
@@ -18,8 +19,10 @@ sensor_listener_h stepsSensorListener;
 
 void hrm_sensor_callback(sensor_h, sensor_event_s *, void *);
 void steps_sensor_callback(sensor_h, sensor_event_s *, void *);
+
 void get_sensor_permissions();
 void sensor_permission_response_callback(ppm_call_cause_e, ppm_request_result_e, const char *, void *);
+
 
 void create_watch_face(watchfacedata_s *face, int width, int height)
 {
@@ -55,17 +58,17 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 
 	// Add our time row labels
 	face->topTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->topTimeRow, face->width*0.1, face->height*0.18);
+	evas_object_move(face->topTimeRow, face->width*0.09, face->height*0.18);
 	evas_object_resize(face->topTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->topTimeRow);
 
 	face->midTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->midTimeRow, face->width*0.1, face->height*0.38);
+	evas_object_move(face->midTimeRow, face->width*0.09, face->height*0.38);
 	evas_object_resize(face->midTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->midTimeRow);
 
 	face->bottomTimeRow = elm_label_add(face->naviframe);
-	evas_object_move(face->bottomTimeRow, face->width*0.1, face->height*0.58);
+	evas_object_move(face->bottomTimeRow, face->width*0.09, face->height*0.58);
 	evas_object_resize(face->bottomTimeRow, face->width*0.5, face->height*0.2);
 	evas_object_show(face->bottomTimeRow);
 
@@ -153,22 +156,22 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 void add_display_widgets(watchfacedata_s *face)
 {
 	face->heartrate = elm_label_add(face->naviframe);
-	evas_object_move(face->heartrate, face->width*0.7, face->height*0.30);
-	evas_object_resize(face->heartrate, face->width*0.2, face->height*0.2);
+	evas_object_move(face->heartrate, face->width*0.7, face->height*0.22);
+	evas_object_resize(face->heartrate, face->width*0.2, face->height*0.20);
 	evas_object_show(face->heartrate);
 
 	face->battery = elm_label_add(face->naviframe);
-	evas_object_move(face->battery, face->width*0.7, face->height*0.40);
+	evas_object_move(face->battery, face->width*0.7, face->height*0.35);
 	evas_object_resize(face->battery, face->width*0.2, face->height*0.2);
 	evas_object_show(face->battery);
 
 	face->steps = elm_label_add(face->naviframe);
-	evas_object_move(face->steps, face->width*0.7, face->height*0.50);
+	evas_object_move(face->steps, face->width*0.7, face->height*0.48);
 	evas_object_resize(face->steps, face->width*0.2, face->height*0.2);
 	evas_object_show(face->steps);
 
 	face->date = elm_label_add(face->naviframe);
-	evas_object_move(face->date, face->width*0.7, face->height*0.60);
+	evas_object_move(face->date, face->width*0.7, face->height*0.70);
 	evas_object_resize(face->date, face->width*0.2, face->height*0.2);
 	evas_object_show(face->date);
 
@@ -203,7 +206,7 @@ void create_sensor_callbacks(watchfacedata_s *face)
 
 	ret = sensor_listener_set_event_cb(stepsSensorListener, 20000, steps_sensor_callback, face);
 	if( ret != SENSOR_ERROR_NONE)
-		dlog_print(DLOG_ERROR, LOG_TAG, "failed to set ste[s sensor listener. err = %d", ret);
+		dlog_print(DLOG_ERROR, LOG_TAG, "failed to set steps sensor listener. err = %d", ret);
 
 	sensor_listener_set_option(stepsSensorListener, SENSOR_OPTION_DEFAULT);
 	sensor_listener_start(stepsSensorListener);
@@ -223,20 +226,23 @@ void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
 		face->privileged = 1;
 	}
 
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d bpm</font>",face->beatsPerMinute);
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d bpm</font>",face->beatsPerMinute);
 	elm_object_text_set(face->heartrate, formattedLine);
 
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d steps</font>",face->stepsTaken);
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d<br/>steps</font>",face->stepsTaken);
 	elm_object_text_set(face->steps, formattedLine);
 
 	device_battery_get_percent(&batteryCharge);
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d %%</font>",batteryCharge);
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d %%</font>",batteryCharge);
 	elm_object_text_set(face->battery, formattedLine);
 
-	watch_time_get_day(watchtime, &day);
-	watch_time_get_month(watchtime, &month);
-	snprintf(formattedLine, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=bold font_size=24 align=left>%d %s</font></color>",day, MONTHS[month-1]);
-	elm_object_text_set(face->date, formattedLine);
+	if( watchtime != NULL)
+	{
+		watch_time_get_day(watchtime, &day);
+		watch_time_get_month(watchtime, &month);
+		snprintf(formattedLine, TEXTBUFSIZE, "<color=#0000FFFF><font=TizenSans font_weight=bold font_size=24 align=left>%d %s</font></color>",day, MONTHS[month-1]);
+		elm_object_text_set(face->date, formattedLine);
+	}
 }
 
 /* Animated seconds bar */
@@ -281,7 +287,7 @@ void steps_sensor_callback(sensor_h sensor, sensor_event_s *event, void *user_da
 	sensor_type_e sensorType;
 	sensor_get_type(sensor, &sensorType);
 
-	watchfacedata_s *face = (watchfacedata_s *)user_data;
+		watchfacedata_s *face = (watchfacedata_s *)user_data;
 
 	if (sensorType == SENSOR_HUMAN_PEDOMETER)
 	{
@@ -318,6 +324,25 @@ void get_sensor_permissions()
 				break;
 		}
 
+	    ret = ppm_check_permission("http://tizen.org/privilege/display", &result);
+	    if( ret == PRIVACY_PRIVILEGE_MANAGER_ERROR_NONE)
+	    {
+			switch( result)
+			{
+				case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_ALLOW:
+					dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv http://tizen.org/privilege/display");
+					break;
+
+				case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_DENY:
+					dlog_print(DLOG_ERROR, LOG_TAG, "denied sensor priv http://tizen.org/privilege/display");
+					break;
+
+				case PRIVACY_PRIVILEGE_MANAGER_CHECK_RESULT_ASK:
+					dlog_print(DLOG_ERROR, LOG_TAG, "asking for sensor priv http://tizen.org/privilege/display");
+					ret = ppm_request_permission("http://tizen.org/privilege/healthinfo", sensor_permission_response_callback, NULL);
+					break;
+			}
+	    }
 
     }
 }
@@ -334,17 +359,17 @@ void sensor_permission_response_callback(ppm_call_cause_e cause, ppm_request_res
 	switch (result) {
 		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_ALLOW_FOREVER:
 			/* Update UI and start accessing protected functionality */
-			dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv forever %s", priv);
+			dlog_print(DLOG_ERROR, LOG_TAG, "allowed priv forever %s", priv);
 			break;
 
 		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_DENY_FOREVER:
 			/* Show a message and terminate the application */
-			dlog_print(DLOG_ERROR, LOG_TAG, "denied sensor priv forever %s", priv);
+			dlog_print(DLOG_ERROR, LOG_TAG, "denied priv forever %s", priv);
 			break;
 
 		case PRIVACY_PRIVILEGE_MANAGER_REQUEST_RESULT_DENY_ONCE:
 			/* Show a message with explanation */
-			dlog_print(DLOG_ERROR, LOG_TAG, "allowed sensor priv once %s", priv);
+			dlog_print(DLOG_ERROR, LOG_TAG, "allowed priv once %s", priv);
 			break;
 	}
 }
