@@ -220,6 +220,7 @@ void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
 	if( face->privileged == 0)
 	{
 		create_sensor_callbacks(face);
+		face->privileged = 1;
 	}
 
 	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=16 align=left>%d bpm</font>",face->beatsPerMinute);
