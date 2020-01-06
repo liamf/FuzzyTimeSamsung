@@ -167,7 +167,7 @@ void fuzzy_time(int hours, int minutes, char* line1, char* line2, char* line3, i
     case 31:
     case 32:
         strcpy(line1, "gone");
-        strcpy(line2, "half past");
+        strcpy(line2, "1/2 past");
         strcpy(line3, HOURS[hours]);
         break;
     case 33:
