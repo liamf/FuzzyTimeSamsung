@@ -119,6 +119,12 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	watch_time_get_minute(watch_time, &minute);
 	watch_time_get_second(watch_time, &second);
 
+	if( hour24 == 0 && minute == 0 && second < 5 )
+	{
+		// Zero the steps counter
+		face->stepsTakenToday = 0;
+	}
+
 	fuzzy_time(hour24, minute, topLine, midLine, bottomLine, &pm, &hint);
 
 	formatLine(formattedLine, topLine, false);
@@ -143,9 +149,9 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	// Set the "second hand" progress bar
 	view_set_second(face, second);
 
-	// Update the widgets once per minute
+	// Update the widgets every 10 seconds
 	// ... which is too often anyway ... not going to change that fast ...
-	if( second == 0 )
+	if( (second % 10) == 0 )
 	{
 		update_display_widgets(face, watch_time);
 	}
@@ -219,6 +225,7 @@ void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
 	int day;
 	int month;
 	int batteryCharge;
+	sensor_event_s event;
 
 	if( face->privileged == 0)
 	{
@@ -226,10 +233,32 @@ void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
 		face->privileged = 1;
 	}
 
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d bpm</font>",face->beatsPerMinute);
+	event.values[0]=0;
+	// Update the HRM now. Dont rely on the callback which seems a bit unreliable
+	sensor_listener_read_data(hrmSensorListener, &event);
+	if( (int)event.values[0] > 0)
+	{
+		face->beatsPerMinute = (int)event.values[0];
+	}
+
+	if( face->beatsPerMinute < 100 )
+	{
+		snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d bpm</font>",face->beatsPerMinute);
+	}
+	else
+	{
+		snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d pm</font>",face->beatsPerMinute);
+	}
 	elm_object_text_set(face->heartrate, formattedLine);
 
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d<br/>steps</font>",face->stepsTaken);
+	event.values[0] = 0;
+	// Update the step count now. Dont rely on the callback which seems a bit unreliable
+	sensor_listener_read_data(stepsSensorListener, &event);
+	if( (int)event.values[0] > 0)
+	{
+		face->stepsTakenToday = (int)event.values[0];
+	}
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d<br/>steps</font>",face->stepsTakenToday);
 	elm_object_text_set(face->steps, formattedLine);
 
 	device_battery_get_percent(&batteryCharge);
@@ -293,7 +322,7 @@ void steps_sensor_callback(sensor_h sensor, sensor_event_s *event, void *user_da
 	{
 		if( (int)event->values[0] > 0)
 		{
-			face->stepsTaken = (int)event->values[0];
+			face->stepsTakenToday = (int)event->values[0];
 		}
 	}
 

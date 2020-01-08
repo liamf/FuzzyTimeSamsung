@@ -31,7 +31,7 @@ typedef struct watchfacedata {
 	int height;
 
 	int beatsPerMinute;
-	int stepsTaken;
+	int stepsTakenToday;
 
 	int privileged;
 
