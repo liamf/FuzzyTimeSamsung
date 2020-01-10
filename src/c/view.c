@@ -43,6 +43,8 @@ void create_watch_face(watchfacedata_s *face, int width, int height)
 	face->beatsPerMinute = 0;
 	face->steps = 0;
 	face->privileged = 0;
+	face->lastUpdateTimestamp = 0;
+	face->stepTakenCorrection = 0;
 
 	/* Conformant */
 	face->conform = elm_conformant_add(face->win);
@@ -111,6 +113,7 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	char formattedLine[TEXTBUFSIZE];
 	int hint;
 	int pm;
+	int updateTime;
 
 	if (watch_time == NULL)
 		return;
@@ -119,11 +122,18 @@ void update_watch_face(watchfacedata_s *face, watch_time_h watch_time, int ambie
 	watch_time_get_minute(watch_time, &minute);
 	watch_time_get_second(watch_time, &second);
 
-	if( hour24 == 0 && minute == 0 && second < 5 )
+	// What time is it?
+	// If this is the first update of the new day (timestamp has gone backwards ...) then reset the step count
+	// This is not 100% accurate but a simple hack
+	updateTime = hour24*3600 + minute*60 + second;
+
+	if( updateTime < face->lastUpdateTimestamp )
 	{
 		// Zero the steps counter
-		face->stepsTakenToday = 0;
+		face->stepTakenCorrection = face->stepsTaken;
 	}
+
+	face->lastUpdateTimestamp = updateTime;
 
 	fuzzy_time(hour24, minute, topLine, midLine, bottomLine, &pm, &hint);
 
@@ -256,9 +266,9 @@ void update_display_widgets(watchfacedata_s *face, watch_time_h watchtime)
 	sensor_listener_read_data(stepsSensorListener, &event);
 	if( (int)event.values[0] > 0)
 	{
-		face->stepsTakenToday = (int)event.values[0];
+		face->stepsTaken = (int)event.values[0];
 	}
-	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d<br/>steps</font>",face->stepsTakenToday);
+	snprintf(formattedLine, TEXTBUFSIZE, "<font=TizenSans font_weight=medium font_size=24 align=left>%d<br/>steps</font>",(face->stepsTaken - face->stepTakenCorrection));
 	elm_object_text_set(face->steps, formattedLine);
 
 	device_battery_get_percent(&batteryCharge);
@@ -322,7 +332,7 @@ void steps_sensor_callback(sensor_h sensor, sensor_event_s *event, void *user_da
 	{
 		if( (int)event->values[0] > 0)
 		{
-			face->stepsTakenToday = (int)event->values[0];
+			face->stepsTaken = (int)event->values[0];
 		}
 	}
 
