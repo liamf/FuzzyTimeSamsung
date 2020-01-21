@@ -1,5 +1,7 @@
 /*
  * Create base GUI and provide manipulation routines
+ *
+ * Liam Friel
  */
 #include <stdlib.h>
 #include <tizen.h>
